@@ -1043,28 +1043,19 @@ set(files
 configure_file("__config_site.in" "${LIBCXX_GENERATED_INCLUDE_TARGET_DIR}/__config_site" @ONLY)
 configure_file("${LIBCXX_ASSERTION_HANDLER_FILE}" "${LIBCXX_GENERATED_INCLUDE_DIR}/__assertion_handler" COPYONLY)
 
-set(_all_includes "${LIBCXX_GENERATED_INCLUDE_TARGET_DIR}/__config_site"
+set(_generated_includes "${LIBCXX_GENERATED_INCLUDE_TARGET_DIR}/__config_site"
                   "${LIBCXX_GENERATED_INCLUDE_DIR}/__assertion_handler")
-foreach(f ${files})
-  set(src "${CMAKE_CURRENT_SOURCE_DIR}/${f}")
-  set(dst "${LIBCXX_GENERATED_INCLUDE_DIR}/${f}")
-  add_custom_command(OUTPUT ${dst}
-    DEPENDS ${src}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src} ${dst}
-    COMMENT "Copying CXX header ${f}")
-  list(APPEND _all_includes "${dst}")
-endforeach()
 
 # Generate the IWYU mapping. This depends on all header files but it's also considered as an
 # "include" for dependency tracking.
 add_custom_command(OUTPUT "${LIBCXX_GENERATED_INCLUDE_DIR}/libcxx.imp"
   COMMAND "${Python3_EXECUTABLE}" "${LIBCXX_SOURCE_DIR}/utils/generate_iwyu_mapping.py" "-o" "${LIBCXX_GENERATED_INCLUDE_DIR}/libcxx.imp"
-  DEPENDS ${_all_includes}
+  DEPENDS "${LIBCXX_SOURCE_DIR}/utils/libcxx/header_information.py"
   COMMENT "Generate the mapping file for include-what-you-use"
 )
-list(APPEND _all_includes "${LIBCXX_GENERATED_INCLUDE_DIR}/libcxx.imp")
+list(APPEND _generated_includes "${LIBCXX_GENERATED_INCLUDE_DIR}/libcxx.imp")
 
-add_custom_target(generate-cxx-headers ALL DEPENDS ${_all_includes})
+add_custom_target(generate-cxx-headers ALL DEPENDS ${_generated_includes})
 
 add_library(cxx-headers INTERFACE)
 target_link_libraries(cxx-headers INTERFACE libcxx-libc-headers libcxx-abi-headers)
