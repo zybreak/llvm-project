@@ -1044,7 +1044,7 @@ configure_file("__config_site.in" "${LIBCXX_GENERATED_INCLUDE_TARGET_DIR}/__conf
 configure_file("${LIBCXX_ASSERTION_HANDLER_FILE}" "${LIBCXX_GENERATED_INCLUDE_DIR}/__assertion_handler" COPYONLY)
 
 set(_generated_includes "${LIBCXX_GENERATED_INCLUDE_TARGET_DIR}/__config_site"
-                  "${LIBCXX_GENERATED_INCLUDE_DIR}/__assertion_handler")
+                        "${LIBCXX_GENERATED_INCLUDE_DIR}/__assertion_handler")
 
 # Generate the IWYU mapping. This depends on all header files but it's also considered as an
 # "include" for dependency tracking.
