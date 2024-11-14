@@ -157,9 +157,9 @@ struct BuiltinTypeDeclBuilder {
     assert(R.isSingleResult() &&
            "Since this is a builtin it should always resolve!");
     auto *VD = cast<ValueDecl>(R.getFoundDecl());
-    QualType Ty = VD->getType();
     return DeclRefExpr::Create(AST, NestedNameSpecifierLoc(), SourceLocation(),
-                               VD, false, NameInfo, Ty, VK_PRValue);
+                               VD, false, NameInfo, AST.BuiltinFnTy,
+                               VK_PRValue);
   }
 
   BuiltinTypeDeclBuilder &addDefaultHandleConstructor(Sema &S) {
@@ -186,15 +186,15 @@ struct BuiltinTypeDeclBuilder {
     return *this;
   }
 
-  BuiltinTypeDeclBuilder &addArraySubscriptOperators() {
+  BuiltinTypeDeclBuilder &addArraySubscriptOperators(Sema &S) {
     if (Record->isCompleteDefinition())
       return *this;
-    addArraySubscriptOperator(true);
-    addArraySubscriptOperator(false);
+    addArraySubscriptOperator(S, true);
+    addArraySubscriptOperator(S, false);
     return *this;
   }
 
-  BuiltinTypeDeclBuilder &addArraySubscriptOperator(bool IsConst) {
+  BuiltinTypeDeclBuilder &addArraySubscriptOperator(Sema &S, bool IsConst) {
     if (Record->isCompleteDefinition())
       return *this;
 
@@ -241,23 +241,29 @@ struct BuiltinTypeDeclBuilder {
     auto FnProtoLoc = TSInfo->getTypeLoc().getAs<FunctionProtoTypeLoc>();
     FnProtoLoc.setParam(0, IdxParam);
 
-    // FIXME: Placeholder to make sure we return the correct type - create
-    // field of element_type and return reference to it. This field will go
-    // away once indexing into resources is properly implemented in
-    // llvm/llvm-project#95956.
-    if (Fields.count("e") == 0) {
-      addMemberVariable("e", ElemTy, {});
-    }
-    FieldDecl *ElemFieldDecl = Fields["e"];
-
     auto *This =
         CXXThisExpr::Create(AST, SourceLocation(),
                             MethodDecl->getFunctionObjectParameterType(), true);
-    Expr *ElemField = MemberExpr::CreateImplicit(
-        AST, This, false, ElemFieldDecl, ElemFieldDecl->getType(), VK_LValue,
-        OK_Ordinary);
-    auto *Return =
-        ReturnStmt::Create(AST, SourceLocation(), ElemField, nullptr);
+    FieldDecl *Handle = Fields["__handle"];
+    auto *HandleExpr = MemberExpr::CreateImplicit(
+        AST, This, false, Handle, Handle->getType(), VK_LValue, OK_Ordinary);
+
+    auto *IndexExpr = DeclRefExpr::Create(
+        AST, NestedNameSpecifierLoc(), SourceLocation(), IdxParam, false,
+        DeclarationNameInfo(IdxParam->getDeclName(), SourceLocation()),
+        AST.UnsignedIntTy, VK_PRValue);
+
+    DeclRefExpr *Builtin =
+        lookupBuiltinFunction(AST, S, "__builtin_hlsl_resource_getpointer");
+    // TODO: Map to an hlsl_device address space.
+    QualType ElemPtrTy = AST.getPointerType(ElemTy);
+    Expr *Call = CallExpr::Create(AST, Builtin, {HandleExpr, IndexExpr},
+                                  ElemPtrTy, VK_PRValue,
+                                  SourceLocation(), FPOptionsOverride());
+    Expr *Deref = UnaryOperator::Create(
+        AST, Call, UO_Deref, ElemTy, VK_PRValue, OK_Ordinary, SourceLocation(),
+        /*CanOverflow=*/false, FPOptionsOverride());
+    auto *Return = ReturnStmt::Create(AST, SourceLocation(), Deref, nullptr);
 
     MethodDecl->setBody(CompoundStmt::Create(AST, {Return}, FPOptionsOverride(),
                                              SourceLocation(),
@@ -482,7 +488,7 @@ void HLSLExternalSemaSource::defineHLSLTypesWithForwardDeclarations() {
     setupBufferType(Decl, *SemaPtr, ResourceClass::UAV,
                     ResourceKind::TypedBuffer, /*IsROV=*/false,
                     /*RawBuffer=*/false)
-        .addArraySubscriptOperators()
+        .addArraySubscriptOperators(*SemaPtr)
         .completeDefinition();
   });
 
@@ -494,7 +500,7 @@ void HLSLExternalSemaSource::defineHLSLTypesWithForwardDeclarations() {
     setupBufferType(Decl, *SemaPtr, ResourceClass::UAV,
                     ResourceKind::TypedBuffer, /*IsROV=*/true,
                     /*RawBuffer=*/false)
-        .addArraySubscriptOperators()
+        .addArraySubscriptOperators(*SemaPtr)
         .completeDefinition();
   });
 
@@ -504,7 +510,7 @@ void HLSLExternalSemaSource::defineHLSLTypesWithForwardDeclarations() {
   onCompletion(Decl, [this](CXXRecordDecl *Decl) {
     setupBufferType(Decl, *SemaPtr, ResourceClass::SRV, ResourceKind::RawBuffer,
                     /*IsROV=*/false, /*RawBuffer=*/true)
-        .addArraySubscriptOperators()
+        .addArraySubscriptOperators(*SemaPtr)
         .completeDefinition();
   });
 
@@ -514,7 +520,7 @@ void HLSLExternalSemaSource::defineHLSLTypesWithForwardDeclarations() {
   onCompletion(Decl, [this](CXXRecordDecl *Decl) {
     setupBufferType(Decl, *SemaPtr, ResourceClass::UAV, ResourceKind::RawBuffer,
                     /*IsROV=*/false, /*RawBuffer=*/true)
-        .addArraySubscriptOperators()
+        .addArraySubscriptOperators(*SemaPtr)
         .completeDefinition();
   });
 
@@ -545,7 +551,7 @@ void HLSLExternalSemaSource::defineHLSLTypesWithForwardDeclarations() {
   onCompletion(Decl, [this](CXXRecordDecl *Decl) {
     setupBufferType(Decl, *SemaPtr, ResourceClass::UAV, ResourceKind::RawBuffer,
                     /*IsROV=*/true, /*RawBuffer=*/true)
-        .addArraySubscriptOperators()
+        .addArraySubscriptOperators(*SemaPtr)
         .completeDefinition();
   });
 }
