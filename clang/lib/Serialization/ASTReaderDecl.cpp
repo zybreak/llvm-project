@@ -3727,6 +3727,9 @@ static void checkMultipleDefinitionInNamedModules(ASTReader &Reader, Decl *D,
   if (Reader.getContext().isInSameModule(M, D->getOwningModule()))
     return;
 
+  // FIXME: Ignore if its a forward declaration
+  return;
+
   Reader.Diag(Previous->getLocation(),
               diag::err_multiple_decl_in_different_modules)
       << cast<NamedDecl>(Previous) << M->Name;
